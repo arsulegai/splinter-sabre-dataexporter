@@ -69,20 +69,19 @@ COPY examples/gameroom/daemon/src /build/examples/gameroom/daemon/src
 COPY libsplinter/src /build/libsplinter/src
 COPY protos/ /build/protos
 
+RUN cargo install cargo-deb
+
 # Build the project
 WORKDIR /build/examples/gameroom/daemon
-RUN cargo build --release
+RUN cargo deb
 
-# create the standalone image
+# -------------=== gameroomd docker build ===-------------
 FROM ubuntu:bionic
 
-RUN apt-get update \
- && apt-get install -y \
-    libssl1.1 \
-    libzmq5 \
-    postgresql-client \
-    curl \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
+COPY --from=BUILDER /build/examples/gameroom/daemon/target/debian/gameroom*.deb /tmp
 
-COPY --from=BUILDER /build/examples/gameroom/daemon/target/release/gameroomd /usr/bin/gameroomd
+RUN apt-get update \
+ && dpkg -i /tmp/gameroom*.deb || true \
+ && apt-get -f -y install
+
+CMD ["gameroomd"]
