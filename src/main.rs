@@ -21,6 +21,7 @@ extern crate log;
 extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
+extern crate db_models;
 
 mod application_metadata;
 mod authorization_handler;

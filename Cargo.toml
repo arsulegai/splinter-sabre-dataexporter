@@ -45,6 +45,7 @@ serde_json = "1.0"
 splinter = { git = "https://github.com/cargill/splinter", features = ["events"]}
 tokio = "0.1"
 uuid = { version = "0.7", features = ["v4"]}
+db-models = { git = "https://github.com/arsulegai/splinter-models" }
 
 [features]
 test-node-endpoint = []
