@@ -31,7 +31,6 @@ mod error;
 use std::thread;
 
 use flexi_logger::{style, DeferredNow, LogSpecBuilder, Logger};
-use gameroom_database::ConnectionPool;
 use log::Record;
 use sawtooth_sdk::signing::create_context;
 use splinter::events::Reactor;
@@ -67,6 +66,7 @@ fn run() -> Result<(), EventListenerError> {
         (author: "Cargill Incorporated, Walmart Inc.")
         (about: "Daemon Package for Listening to events on Splinter")
         (@arg verbose: -v +multiple "Log verbosely")
+        (@arg config: -c --config +takes_value "config file to be used for the event listener service")
         (@arg splinterd_url: --("splinterd-url") +takes_value "connection endpoint to SplinterD rest API")
     )
     .get_matches();
@@ -87,7 +87,6 @@ fn run() -> Result<(), EventListenerError> {
     Logger::with(log_spec_builder.build())
         .format(log_format)
         .start()?;
-
     let config = DataReaderConfigBuilder::default()
         .with_cli_args(&matches)
         .build()?;

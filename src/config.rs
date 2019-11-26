@@ -1,5 +1,6 @@
 /*
  * Copyright 2019 Cargill Incorporated
+ * Copyright 2019 Walmart Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,12 +27,35 @@ use splinter::node_registry::Node;
 use tokio::runtime::Runtime;
 
 use crate::error::{ConfigurationError, GetNodeError};
+use openssl::envelope::Open;
+
+struct DeploymentConfig {
+    tp_name: String,
+    tp_version: String,
+    tp_prefix: String,
+    tp_path: String,
+}
+
+impl DeploymentConfig {
+    fn from(config_file: Option<String>) -> Result<Self, ConfigurationError> {
+        let file = match config_file {
+            Some(file_present) => file_present,
+            None => return ConfigurationError::MissingValue("Deployment configuration file is missing".to_string()),
+        };
+
+        Ok(DeploymentConfig {
+            tp_name: "".to_string(),
+            tp_version: "".to_string(),
+            tp_prefix: "".to_string(),
+            tp_path: "".to_string()
+        })
+    }
+}
 
 #[derive(Debug)]
 pub struct GameroomConfig {
-    rest_api_endpoint: String,
-    database_url: String,
     splinterd_url: String,
+    deployment_config: DeploymentConfig,
 }
 
 impl GameroomConfig {
@@ -48,19 +72,15 @@ impl GameroomConfig {
 }
 
 pub struct DataReaderConfigBuilder {
-    rest_api_endpoint: Option<String>,
-    database_url: Option<String>,
     splinterd_url: Option<String>,
+    config_file: Option<String>,
 }
 
 impl Default for DataReaderConfigBuilder {
     fn default() -> Self {
         Self {
-            rest_api_endpoint: Some("127.0.0.1:8000".to_owned()),
-            database_url: Some(
-                "postgres://gameroom:gameroom_example@postgres:5432/gameroom".to_owned(),
-            ),
             splinterd_url: Some("http://127.0.0.1:8080".to_owned()),
+            config_file: Some("deployment-config.yaml".to_owned()),
         }
     }
 }
@@ -68,37 +88,24 @@ impl Default for DataReaderConfigBuilder {
 impl DataReaderConfigBuilder {
     pub fn with_cli_args(&mut self, matches: &clap::ArgMatches<'_>) -> Self {
         Self {
-            rest_api_endpoint: matches
-                .value_of("bind")
-                .map(ToOwned::to_owned)
-                .or_else(|| self.rest_api_endpoint.take()),
-
-            database_url: matches
-                .value_of("database_url")
-                .map(ToOwned::to_owned)
-                .or_else(|| self.database_url.take()),
-
             splinterd_url: matches
                 .value_of("splinterd_url")
                 .map(ToOwned::to_owned)
                 .or_else(|| self.splinterd_url.take()),
+            config_file: matches
+                .value_of("config")
+                .map(ToOwned::to_owned)
+                .or_else(|| self.config_file.take()),
         }
     }
 
     pub fn build(mut self) -> Result<GameroomConfig, ConfigurationError> {
         Ok(GameroomConfig {
-            rest_api_endpoint: self
-                .rest_api_endpoint
-                .take()
-                .ok_or_else(|| ConfigurationError::MissingValue("rest_api_endpoint".to_owned()))?,
-            database_url: self
-                .database_url
-                .take()
-                .ok_or_else(|| ConfigurationError::MissingValue("database_url".to_owned()))?,
             splinterd_url: self
                 .splinterd_url
                 .take()
                 .ok_or_else(|| ConfigurationError::MissingValue("splinterd_url".to_owned()))?,
+            deployment_config: DeploymentConfig::from(self.config_file.take())?,
         })
     }
 }

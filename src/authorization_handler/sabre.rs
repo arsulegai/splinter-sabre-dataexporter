@@ -1,5 +1,6 @@
 /*
  * Copyright 2019 Cargill Incorporated
+ * Copyright 2019 Walmart Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,8 +95,8 @@ pub fn setup_tp(
     let txns = vec![
         create_contract_registry_txn(scabbard_admin_keys.clone(), &signer)?,
         upload_contract_txn(&signer)?,
-        create_xo_namespace_registry_txn(scabbard_admin_keys.clone(), &signer)?,
-        xo_namespace_permissions_txn(&signer)?,
+        create_tp_namespace_registry_txn(scabbard_admin_keys.clone(), &signer)?,
+        tp_namespace_permissions_txn(&signer)?,
         create_pike_namespace_registry_txn(scabbard_admin_keys, &signer)?,
         pike_namespace_permissions_txn(&signer)?,
     ];
@@ -208,7 +209,7 @@ fn upload_contract_txn(signer: &Signer) -> Result<Transaction, AppAuthHandlerErr
     create_txn(addresses, payload, signer)
 }
 
-fn create_xo_namespace_registry_txn(
+fn create_tp_namespace_registry_txn(
     owners: Vec<String>,
     signer: &Signer,
 ) -> Result<Transaction, AppAuthHandlerError> {
@@ -228,7 +229,7 @@ fn create_xo_namespace_registry_txn(
     create_txn(addresses, payload, signer)
 }
 
-fn xo_namespace_permissions_txn(signer: &Signer) -> Result<Transaction, AppAuthHandlerError> {
+fn tp_namespace_permissions_txn(signer: &Signer) -> Result<Transaction, AppAuthHandlerError> {
     let action = CreateNamespaceRegistryPermissionActionBuilder::new()
         .with_namespace(XO_PREFIX.into())
         .with_contract_name(XO_NAME.into())
