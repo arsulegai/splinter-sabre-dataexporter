@@ -68,7 +68,7 @@ pub const XO_PREFIX: &str = "5b7349";
 const XO_CONTRACT_PATH: &str = "/var/lib/gameroomd/xo-tp-rust.wasm";
 
 /// Create and submit the Sabre transactions to setup the XO smart contract.
-pub fn setup_xo(
+pub fn setup_tp(
     private_key: &str,
     scabbard_admin_keys: Vec<String>,
     splinterd_url: &str,

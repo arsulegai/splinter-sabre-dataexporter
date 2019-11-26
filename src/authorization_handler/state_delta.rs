@@ -27,22 +27,20 @@ use splinter::service::scabbard::StateChangeEvent;
 
 use crate::authorization_handler::sabre::{get_xo_contract_address, XO_PREFIX};
 
-pub struct XoStateDeltaProcessor {
+pub struct SabreProcessor {
     circuit_id: String,
     node_id: String,
     requester: String,
     contract_address: String,
-    db_pool: ConnectionPool,
 }
 
-impl XoStateDeltaProcessor {
-    pub fn new(circuit_id: &str, node_id: &str, requester: &str, db_pool: &ConnectionPool) -> Self {
-        XoStateDeltaProcessor {
+impl SabreProcessor {
+    pub fn new(circuit_id: &str, node_id: &str, requester: &str) -> Self {
+        SabreProcessor {
             circuit_id: circuit_id.into(),
             node_id: node_id.to_string(),
             requester: requester.to_string(),
             contract_address: get_xo_contract_address(),
-            db_pool: db_pool.clone(),
         }
     }
 

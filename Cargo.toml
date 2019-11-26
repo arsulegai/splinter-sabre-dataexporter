@@ -13,9 +13,9 @@
 # limitations under the License.
 
 [package]
-name = "gameroom-daemon"
+name = "event-listener"
 version = "0.3.6"
-authors = ["Cargill Incorporated"]
+authors = ["Cargill Incorporated", "Walmart Inc."]
 edition = "2018"
 license = "Apache-2.0"
 
@@ -42,7 +42,7 @@ sawtooth-sdk = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
-splinter = { path = "../../../libsplinter", features = ["events"]}
+splinter = { git = "https://github.com/cargill/splinter", features = ["events"]}
 tokio = "0.1"
 uuid = { version = "0.7", features = ["v4"]}
 
@@ -51,23 +51,5 @@ test-node-endpoint = []
 test-authorization-handler = []
 
 [[bin]]
-name = "gameroomd"
+name = "event-listener"
 path = "src/main.rs"
-
-[package.metadata.deb]
-maintainer = "The Splinter Team"
-depends = "$auto"
-assets = [
-    ["packaging/systemd/gameroomd.service", "/lib/systemd/system/gameroomd.service", "644"],
-    ["packaging/systemd/gameroomd", "/etc/default/gameroomd", "644"],
-    ["target/release/gameroomd", "/usr/bin/gameroomd", "755"]
-]
-conf-files = [
-    "/etc/default/gameroomd",
-    "/lib/systemd/system/gameroomd.service"
-]
-maintainer-scripts = "packaging/ubuntu"
-extended-description = """\
-Gameroom is a demo Splinter application that allows you to set up dynamic \
-multi-party circuits (called "gamerooms") and play tic tac toe with \
-shared state"""

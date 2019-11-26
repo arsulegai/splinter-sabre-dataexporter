@@ -39,11 +39,11 @@ use splinter::{
     events::{Igniter, WebSocketClient, WebSocketError, WsResponse},
     service::scabbard::StateChangeEvent,
 };
-use state_delta::XoStateDeltaProcessor;
+use state_delta::SabreProcessor;
 
 use crate::application_metadata::ApplicationMetadata;
 
-use self::sabre::setup_xo;
+use self::sabre::setup_tp;
 
 /// default value if the client should attempt to reconnet if ws connection is lost
 const RECONNECT: bool = true;
@@ -57,22 +57,16 @@ const CONNECTION_TIMEOUT: u64 = 60;
 pub fn run(
     splinterd_url: String,
     node_id: String,
-    db_conn: ConnectionPool,
     private_key: String,
     igniter: Igniter,
 ) -> Result<(), AppAuthHandlerError> {
-    let pool = db_conn.get()?;
-    helpers::fetch_active_gamerooms(&pool, &node_id)?
-        .iter()
-        .map(|gameroom| resubscribe(&splinterd_url, gameroom, &db_conn))
-        .try_for_each(|ws| igniter.start_ws(&ws))?;
 
+    // TODO: Resubscribe to all the earlier circuits
     let mut ws = WebSocketClient::new(
-        &format!("{}/ws/admin/register/gameroom", splinterd_url),
+        &format!("{}/ws/admin/register/consortium", splinterd_url),
         move |ctx, event| {
             if let Err(err) = process_admin_event(
                 event,
-                &db_conn,
                 &node_id,
                 &private_key,
                 &splinterd_url,
@@ -111,7 +105,6 @@ pub fn run(
 
 fn process_admin_event(
     admin_event: AdminServiceEvent,
-    pool: &ConnectionPool,
     node_id: &str,
     private_key: &str,
     url: &str,
@@ -125,7 +118,7 @@ fn process_admin_event(
             let requester = to_hex(&msg_proposal.requester);
             let proposal = parse_proposal(&msg_proposal, time, requester);
 
-            let gameroom = parse_gameroom(&msg_proposal.circuit, time)?;
+            let consortium = parse_consortium(&msg_proposal.circuit, time)?;
 
             let services = parse_splinter_services(
                 &msg_proposal.circuit_id,
@@ -138,27 +131,8 @@ fn process_admin_event(
                 &msg_proposal.circuit.members,
                 time,
             );
-
-            let conn = &*pool.get()?;
-
-            // insert proposal information in database tables in a single transaction
-            conn.transaction::<_, _, _>(|| {
-                let notification = helpers::create_new_notification(
-                    "gameroom_proposal",
-                    &proposal.requester,
-                    &proposal.requester_node_id,
-                    &proposal.circuit_id,
-                );
-                helpers::insert_gameroom_notification(conn, &[notification])?;
-
-                helpers::insert_gameroom(conn, gameroom)?;
-                helpers::insert_gameroom_proposal(conn, proposal)?;
-                helpers::insert_gameroom_services(conn, &services)?;
-                helpers::insert_gameroom_members(conn, &nodes)?;
-
-                debug!("Inserted new proposal into database");
-                Ok(())
-            })
+            Ok(())
+            // TODO: Notify event listener that an event is available
         }
         AdminServiceEvent::ProposalVote((msg_proposal, signer_public_key)) => {
             let proposal = get_pending_proposal_with_circuit_id(&pool, &msg_proposal.circuit_id)?;
@@ -177,23 +151,8 @@ fn process_admin_event(
                 vote: "Accept".to_string(),
                 created_time: time,
             };
-            let conn = &*pool.get()?;
-
-            // insert vote and update proposal in a single database transaction
-            conn.transaction::<_, _, _>(|| {
-                let notification = helpers::create_new_notification(
-                    "proposal_vote_record",
-                    &vote.voter_public_key,
-                    &vote.voter_node_id,
-                    &msg_proposal.circuit_id,
-                );
-                helpers::insert_gameroom_notification(conn, &[notification])?;
-                helpers::update_gameroom_proposal_status(conn, proposal.id, &time, "Pending")?;
-                helpers::insert_proposal_vote_record(conn, &[vote])?;
-
-                debug!("Inserted new vote into database");
-                Ok(())
-            })
+            // TODO: Send an event that a vote is ready
+            Ok(())
         }
         AdminServiceEvent::ProposalAccepted((msg_proposal, signer_public_key)) => {
             let proposal = get_pending_proposal_with_circuit_id(&pool, &msg_proposal.circuit_id)?;
@@ -213,39 +172,7 @@ fn process_admin_event(
                 vote: "Accept".to_string(),
                 created_time: time,
             };
-            let conn = &*pool.get()?;
-
-            // insert vote and update proposal in a single database transaction
-            conn.transaction::<_, _, _>(|| {
-                let notification = helpers::create_new_notification(
-                    "proposal_accepted",
-                    &vote.voter_public_key,
-                    &vote.voter_node_id,
-                    &msg_proposal.circuit_id,
-                );
-                helpers::insert_gameroom_notification(conn, &[notification])?;
-                helpers::update_gameroom_proposal_status(conn, proposal.id, &time, "Accepted")?;
-                helpers::update_gameroom_status(conn, &msg_proposal.circuit_id, &time, "Accepted")?;
-                helpers::update_gameroom_member_status(
-                    conn,
-                    &msg_proposal.circuit_id,
-                    &time,
-                    "Pending",
-                    "Accepted",
-                )?;
-                helpers::update_gameroom_service_status(
-                    conn,
-                    &msg_proposal.circuit_id,
-                    &time,
-                    "Pending",
-                    "Accepted",
-                )?;
-
-                helpers::insert_proposal_vote_record(conn, &[vote])?;
-
-                debug!("Updated proposal to status 'Accepted'");
-                Ok(())
-            })
+            // TODO: Proposal is accepted
         }
         AdminServiceEvent::ProposalRejected((msg_proposal, signer_public_key)) => {
             let proposal = get_pending_proposal_with_circuit_id(&pool, &msg_proposal.circuit_id)?;
@@ -265,46 +192,9 @@ fn process_admin_event(
                 vote: "Reject".to_string(),
                 created_time: time,
             };
-            let conn = &*pool.get()?;
-
-            // insert vote and update proposal in a single database transaction
-            conn.transaction::<_, _, _>(|| {
-                let notification = helpers::create_new_notification(
-                    "proposal_rejected",
-                    &vote.voter_public_key,
-                    &vote.voter_node_id,
-                    &msg_proposal.circuit_id,
-                );
-                helpers::insert_gameroom_notification(conn, &[notification])?;
-                helpers::update_gameroom_proposal_status(conn, proposal.id, &time, "Rejected")?;
-                helpers::update_gameroom_status(conn, &msg_proposal.circuit_id, &time, "Rejected")?;
-                helpers::update_gameroom_member_status(
-                    conn,
-                    &msg_proposal.circuit_id,
-                    &time,
-                    "Pending",
-                    "Rejected",
-                )?;
-                helpers::update_gameroom_service_status(
-                    conn,
-                    &msg_proposal.circuit_id,
-                    &time,
-                    "Pending",
-                    "Rejected",
-                )?;
-                helpers::insert_proposal_vote_record(conn, &[vote])?;
-                debug!("Updated proposal to status 'Rejected'");
-                Ok(())
-            })
+            // TODO: Proposal is rejected
         }
         AdminServiceEvent::CircuitReady(msg_proposal) => {
-            let conn = &*pool.get()?;
-
-            // If the gameroom already exists and is in the ready state, skip
-            // processing the event.
-            if helpers::gameroom_service_is_active(conn, &msg_proposal.circuit_id)? {
-                return Ok(());
-            }
 
             // Now that the circuit is created, submit the Sabre transactions to run xo
             let service_id = match msg_proposal.circuit.roster.iter().find_map(|service| {
@@ -338,41 +228,12 @@ fn process_admin_event(
             let time = SystemTime::now();
             let requester = to_hex(&msg_proposal.requester);
             let proposal = parse_proposal(&msg_proposal, time, requester);
+            // TODO: Notify that the circuit is ready
 
-            conn.transaction::<_, AppAuthHandlerError, _>(|| {
-                let notification = helpers::create_new_notification(
-                    "circuit_ready",
-                    &proposal.requester,
-                    &proposal.requester_node_id,
-                    &proposal.circuit_id,
-                );
-                helpers::insert_gameroom_notification(conn, &[notification])?;
-                helpers::update_gameroom_status(conn, &msg_proposal.circuit_id, &time, "Ready")?;
-                helpers::update_gameroom_member_status(
-                    conn,
-                    &msg_proposal.circuit_id,
-                    &time,
-                    "Accepted",
-                    "Ready",
-                )?;
-                helpers::update_gameroom_service_status(
-                    conn,
-                    &msg_proposal.circuit_id,
-                    &time,
-                    "Accepted",
-                    "Ready",
-                )?;
-
-                debug!("Updated proposal to status 'Ready'");
-
-                Ok(())
-            })?;
-
-            let processor = XoStateDeltaProcessor::new(
+            let processor = SabreProcessor::new(
                 &msg_proposal.circuit_id,
                 &proposal.requester_node_id,
                 &proposal.requester,
-                &pool,
             );
 
             let mut xo_ws = WebSocketClient::new(
@@ -391,8 +252,8 @@ fn process_admin_event(
             let url_to_string = url.to_string();
             let private_key_to_string = private_key.to_string();
             xo_ws.on_open(move |ctx| {
-                debug!("Starting XO State Delta Export");
-                let future = match setup_xo(
+                debug!("Starting State Delta Export");
+                let future = match setup_tp(
                     &private_key_to_string,
                     scabbard_admin_keys.clone(),
                     &url_to_string,
@@ -443,48 +304,6 @@ fn process_admin_event(
     }
 }
 
-fn resubscribe(
-    url: &str,
-    gameroom: &ActiveGameroom,
-    db_pool: &ConnectionPool,
-) -> WebSocketClient<Vec<StateChangeEvent>> {
-    let processor = XoStateDeltaProcessor::new(
-        &gameroom.circuit_id,
-        &gameroom.requester_node_id,
-        &gameroom.requester,
-        db_pool,
-    );
-
-    let mut ws = WebSocketClient::new(
-        &format!(
-            "{}/scabbard/{}/{}/ws/subscribe",
-            url, gameroom.circuit_id, gameroom.service_id
-        ),
-        move |_, changes| {
-            if let Err(err) = processor.handle_state_changes(changes) {
-                error!("An error occurred while handling state changes {:?}", err);
-            }
-            WsResponse::Empty
-        },
-    );
-
-    ws.on_error(move |err, ctx| {
-        error!(
-            "An error occured while listening for scabbard events {}",
-            err
-        );
-        if let WebSocketError::ParserError { .. } = err {
-            debug!("Protocol error, closing connection");
-            Ok(())
-        } else {
-            debug!("Attempting to restart connection");
-            ctx.start_ws()
-        }
-    });
-
-    ws
-}
-
 fn parse_proposal(
     proposal: &CircuitProposal,
     timestamp: SystemTime,
@@ -502,7 +321,7 @@ fn parse_proposal(
     }
 }
 
-fn parse_gameroom(
+fn parse_consortium(
     circuit: &CreateCircuit,
     timestamp: SystemTime,
 ) -> Result<Gameroom, AppAuthHandlerError> {
@@ -1100,7 +919,7 @@ mod test {
     /// Tests if the admin message CreateCircuit to a database Gameroom is successful
     fn test_parse_gameroom() {
         let time = SystemTime::now();
-        let gameroom = parse_gameroom(&get_create_circuit_msg("my_circuit"), time)
+        let gameroom = parse_consortium(&get_create_circuit_msg("my_circuit"), time)
             .expect("Failed to parse gameroom");
 
         assert_eq!(gameroom, get_gameroom("my_circuit", time.clone()))

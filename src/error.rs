@@ -1,4 +1,4 @@
-// Copyright 2019 Cargill Incorporated
+// Copyright 2019 Walmart Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,54 +18,50 @@ use std::fmt;
 use sawtooth_sdk::signing::Error as KeyGenError;
 
 use crate::authorization_handler::AppAuthHandlerError;
-use crate::rest_api::RestApiServerError;
 use gameroom_database::DatabaseError;
 
 #[derive(Debug)]
-pub enum GameroomDaemonError {
+pub enum EventListenerError {
     LoggingInitializationError(flexi_logger::FlexiLoggerError),
     ConfigurationError(Box<ConfigurationError>),
     DatabaseError(Box<DatabaseError>),
-    RestApiError(RestApiServerError),
     AppAuthHandlerError(AppAuthHandlerError),
     KeyGenError(KeyGenError),
     GetNodeError(GetNodeError),
 }
 
-impl Error for GameroomDaemonError {
+impl Error for EventListenerError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            GameroomDaemonError::LoggingInitializationError(err) => Some(err),
-            GameroomDaemonError::ConfigurationError(err) => Some(err),
-            GameroomDaemonError::DatabaseError(err) => Some(&**err),
-            GameroomDaemonError::RestApiError(err) => Some(err),
-            GameroomDaemonError::AppAuthHandlerError(err) => Some(err),
-            GameroomDaemonError::KeyGenError(err) => Some(err),
-            GameroomDaemonError::GetNodeError(err) => Some(err),
+            EventListenerError::LoggingInitializationError(err) => Some(err),
+            EventListenerError::ConfigurationError(err) => Some(err),
+            EventListenerError::DatabaseError(err) => Some(&**err),
+            EventListenerError::AppAuthHandlerError(err) => Some(err),
+            EventListenerError::KeyGenError(err) => Some(err),
+            EventListenerError::GetNodeError(err) => Some(err),
         }
     }
 }
 
-impl fmt::Display for GameroomDaemonError {
+impl fmt::Display for EventListenerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            GameroomDaemonError::LoggingInitializationError(e) => {
+            EventListenerError::LoggingInitializationError(e) => {
                 write!(f, "Logging initialization error: {}", e)
             }
-            GameroomDaemonError::ConfigurationError(e) => write!(f, "Coniguration error: {}", e),
-            GameroomDaemonError::DatabaseError(e) => write!(f, "Database error: {}", e),
-            GameroomDaemonError::RestApiError(e) => write!(f, "Rest API error: {}", e),
-            GameroomDaemonError::AppAuthHandlerError(e) => write!(
+            EventListenerError::ConfigurationError(e) => write!(f, "Coniguration error: {}", e),
+            EventListenerError::DatabaseError(e) => write!(f, "Database error: {}", e),
+            EventListenerError::AppAuthHandlerError(e) => write!(
                 f,
                 "The application authorization handler returned an error: {}",
                 e
             ),
-            GameroomDaemonError::KeyGenError(e) => write!(
+            EventListenerError::KeyGenError(e) => write!(
                 f,
                 "an error occurred while generating a new key pair: {}",
                 e
             ),
-            GameroomDaemonError::GetNodeError(e) => write!(
+            EventListenerError::GetNodeError(e) => write!(
                 f,
                 "an error occurred while getting splinterd node information: {}",
                 e
@@ -74,33 +70,27 @@ impl fmt::Display for GameroomDaemonError {
     }
 }
 
-impl From<flexi_logger::FlexiLoggerError> for GameroomDaemonError {
-    fn from(err: flexi_logger::FlexiLoggerError) -> GameroomDaemonError {
-        GameroomDaemonError::LoggingInitializationError(err)
+impl From<flexi_logger::FlexiLoggerError> for EventListenerError {
+    fn from(err: flexi_logger::FlexiLoggerError) -> EventListenerError {
+        EventListenerError::LoggingInitializationError(err)
     }
 }
 
-impl From<DatabaseError> for GameroomDaemonError {
-    fn from(err: DatabaseError) -> GameroomDaemonError {
-        GameroomDaemonError::DatabaseError(Box::new(err))
+impl From<DatabaseError> for EventListenerError {
+    fn from(err: DatabaseError) -> EventListenerError {
+        EventListenerError::DatabaseError(Box::new(err))
     }
 }
 
-impl From<RestApiServerError> for GameroomDaemonError {
-    fn from(err: RestApiServerError) -> GameroomDaemonError {
-        GameroomDaemonError::RestApiError(err)
+impl From<AppAuthHandlerError> for EventListenerError {
+    fn from(err: AppAuthHandlerError) -> EventListenerError {
+        EventListenerError::AppAuthHandlerError(err)
     }
 }
 
-impl From<AppAuthHandlerError> for GameroomDaemonError {
-    fn from(err: AppAuthHandlerError) -> GameroomDaemonError {
-        GameroomDaemonError::AppAuthHandlerError(err)
-    }
-}
-
-impl From<KeyGenError> for GameroomDaemonError {
-    fn from(err: KeyGenError) -> GameroomDaemonError {
-        GameroomDaemonError::KeyGenError(err)
+impl From<KeyGenError> for EventListenerError {
+    fn from(err: KeyGenError) -> EventListenerError {
+        EventListenerError::KeyGenError(err)
     }
 }
 
@@ -121,9 +111,9 @@ impl fmt::Display for ConfigurationError {
     }
 }
 
-impl From<ConfigurationError> for GameroomDaemonError {
+impl From<ConfigurationError> for EventListenerError {
     fn from(err: ConfigurationError) -> Self {
-        GameroomDaemonError::ConfigurationError(Box::new(err))
+        EventListenerError::ConfigurationError(Box::new(err))
     }
 }
 
@@ -142,8 +132,8 @@ impl fmt::Display for GetNodeError {
     }
 }
 
-impl From<GetNodeError> for GameroomDaemonError {
+impl From<GetNodeError> for EventListenerError {
     fn from(err: GetNodeError) -> Self {
-        GameroomDaemonError::GetNodeError(err)
+        EventListenerError::GetNodeError(err)
     }
 }

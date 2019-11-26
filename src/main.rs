@@ -1,4 +1,5 @@
 // Copyright 2019 Cargill Incorporated
+// Copyright 2019 Walmart Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +26,6 @@ mod application_metadata;
 mod authorization_handler;
 mod config;
 mod error;
-mod rest_api;
 
 use std::thread;
 
@@ -35,8 +35,8 @@ use log::Record;
 use sawtooth_sdk::signing::create_context;
 use splinter::events::Reactor;
 
-use crate::config::{get_node, GameroomConfigBuilder};
-use crate::error::GameroomDaemonError;
+use crate::config::{get_node, DataReaderConfigBuilder};
+use crate::error::EventListenerError;
 
 const APP_NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -59,15 +59,13 @@ pub fn log_format(
     )
 }
 
-fn run() -> Result<(), GameroomDaemonError> {
+fn run() -> Result<(), EventListenerError> {
     let matches = clap_app!(myapp =>
         (name: APP_NAME)
         (version: VERSION)
-        (author: "Cargill Incorporated")
-        (about: "Daemon Package for Gameroom")
+        (author: "Cargill Incorporated, Walmart Inc.")
+        (about: "Daemon Package for Listening to events on Splinter")
         (@arg verbose: -v +multiple "Log verbosely")
-        (@arg database_url: --("database-url") +takes_value "Database connection for Gameroom rest API")
-        (@arg bind: -b --bind +takes_value "connection endpoint for Gameroom rest API")
         (@arg splinterd_url: --("splinterd-url") +takes_value "connection endpoint to SplinterD rest API")
     )
     .get_matches();
@@ -89,12 +87,9 @@ fn run() -> Result<(), GameroomDaemonError> {
         .format(log_format)
         .start()?;
 
-    let config = GameroomConfigBuilder::default()
+    let config = DataReaderConfigBuilder::default()
         .with_cli_args(&matches)
         .build()?;
-
-    let connection_pool: ConnectionPool =
-        gameroom_database::create_connection_pool(config.database_url())?;
 
     // Generate a public/private key pair
     let context = create_context("secp256k1")?;
@@ -109,29 +104,9 @@ fn run() -> Result<(), GameroomDaemonError> {
     authorization_handler::run(
         config.splinterd_url().into(),
         node.identity.clone(),
-        connection_pool.clone(),
         private_key.as_hex(),
         reactor.igniter(),
     )?;
-
-    let (rest_api_shutdown_handle, rest_api_join_handle) = rest_api::run(
-        config.rest_api_endpoint(),
-        config.splinterd_url(),
-        node,
-        connection_pool.clone(),
-        public_key.as_hex(),
-    )?;
-
-    ctrlc::set_handler(move || {
-        info!("Received Shutdown");
-
-        if let Err(err) = rest_api_shutdown_handle.shutdown() {
-            error!("Unable to cleanly shutdown REST API server: {}", err);
-        }
-    })
-    .expect("Error setting Ctrl-C handler");
-
-    let _ = rest_api_join_handle.join();
 
     if let Err(err) = reactor.shutdown() {
         error!(

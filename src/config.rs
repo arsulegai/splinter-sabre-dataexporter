@@ -47,13 +47,13 @@ impl GameroomConfig {
     }
 }
 
-pub struct GameroomConfigBuilder {
+pub struct DataReaderConfigBuilder {
     rest_api_endpoint: Option<String>,
     database_url: Option<String>,
     splinterd_url: Option<String>,
 }
 
-impl Default for GameroomConfigBuilder {
+impl Default for DataReaderConfigBuilder {
     fn default() -> Self {
         Self {
             rest_api_endpoint: Some("127.0.0.1:8000".to_owned()),
@@ -65,7 +65,7 @@ impl Default for GameroomConfigBuilder {
     }
 }
 
-impl GameroomConfigBuilder {
+impl DataReaderConfigBuilder {
     pub fn with_cli_args(&mut self, matches: &clap::ArgMatches<'_>) -> Self {
         Self {
             rest_api_endpoint: matches
