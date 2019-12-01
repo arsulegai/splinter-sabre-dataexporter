@@ -29,7 +29,8 @@ use tokio::runtime::Runtime;
 use crate::error::{ConfigurationError, GetNodeError};
 use openssl::envelope::Open;
 
-struct DeploymentConfig {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DeploymentConfig {
     tp_name: String,
     tp_version: String,
     tp_prefix: String,
@@ -40,34 +41,55 @@ impl DeploymentConfig {
     fn from(config_file: Option<String>) -> Result<Self, ConfigurationError> {
         let file = match config_file {
             Some(file_present) => file_present,
-            None => return ConfigurationError::MissingValue("Deployment configuration file is missing".to_string()),
+            None => return Err(ConfigurationError::MissingValue("Deployment configuration file is missing".to_string())),
         };
-
+        let f = match std::fs::File::open("something.yaml") {
+            Ok(file) => file,
+            Err(err) => return Err(ConfigurationError::MissingValue(format!("Invalid deployment configuration {}", err.to_string()))),
+        };
+        let resultant: Result<DeploymentConfig, serde_yaml::Error> = serde_yaml::from_reader(f);
+        let parsed = match resultant {
+            Ok(parsed) => parsed,
+            Err(err) => return Err(ConfigurationError::MissingValue(format!("Invalid deployment configuration {}", err.to_string()))),
+        };
         Ok(DeploymentConfig {
-            tp_name: "".to_string(),
-            tp_version: "".to_string(),
-            tp_prefix: "".to_string(),
-            tp_path: "".to_string()
+            tp_name: parsed.tp_name,
+            tp_version: parsed.tp_version,
+            tp_prefix: parsed.tp_prefix,
+            tp_path: parsed.tp_path,
         })
+    }
+
+    pub fn tp_name(&self) -> &str {
+        &self.tp_name
+    }
+
+    pub fn tp_version(&self) -> &str {
+        &self.tp_version
+    }
+
+    pub fn tp_prefix(&self) -> &str {
+        &self.tp_prefix
+    }
+
+    pub fn tp_path(&self) -> &str {
+        &self.tp_path
     }
 }
 
-#[derive(Debug)]
-pub struct GameroomConfig {
+#[derive(Debug, Clone)]
+pub struct EventListenerConfig {
     splinterd_url: String,
     deployment_config: DeploymentConfig,
 }
 
-impl GameroomConfig {
-    pub fn rest_api_endpoint(&self) -> &str {
-        &self.rest_api_endpoint
-    }
-    pub fn database_url(&self) -> &str {
-        &self.database_url
-    }
-
+impl EventListenerConfig {
     pub fn splinterd_url(&self) -> &str {
         &self.splinterd_url
+    }
+
+    pub fn deployment_config(&self) -> &DeploymentConfig {
+        &self.deployment_config
     }
 }
 
@@ -99,8 +121,8 @@ impl DataReaderConfigBuilder {
         }
     }
 
-    pub fn build(mut self) -> Result<GameroomConfig, ConfigurationError> {
-        Ok(GameroomConfig {
+    pub fn build(mut self) -> Result<EventListenerConfig, ConfigurationError> {
+        Ok(EventListenerConfig {
             splinterd_url: self
                 .splinterd_url
                 .take()

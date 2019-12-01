@@ -34,7 +34,6 @@ use crate::application_metadata::ApplicationMetadataError;
 pub enum AppAuthHandlerError {
     IOError(std::io::Error),
     InvalidMessageError(String),
-    DatabaseError(String),
     ReactorError(events::ReactorError),
     WebSocketError(events::WebSocketError),
     SabreError(String),
@@ -48,7 +47,6 @@ impl Error for AppAuthHandlerError {
         match self {
             AppAuthHandlerError::IOError(err) => Some(err),
             AppAuthHandlerError::InvalidMessageError(_) => None,
-            AppAuthHandlerError::DatabaseError(_) => None,
             AppAuthHandlerError::ReactorError(err) => Some(err),
             AppAuthHandlerError::SabreError(_) => None,
             AppAuthHandlerError::SawtoothError(_) => None,
@@ -65,9 +63,6 @@ impl fmt::Display for AppAuthHandlerError {
             AppAuthHandlerError::IOError(msg) => write!(f, "An I/O error occurred: {}", msg),
             AppAuthHandlerError::InvalidMessageError(msg) => {
                 write!(f, "The client received an invalid message: {}", msg)
-            }
-            AppAuthHandlerError::DatabaseError(msg) => {
-                write!(f, "The database returned an error: {}", msg)
             }
             AppAuthHandlerError::ReactorError(msg) => write!(f, "Reactor Error: {}", msg),
             AppAuthHandlerError::SabreError(msg) => write!(
@@ -114,18 +109,6 @@ impl From<std::string::FromUtf8Error> for AppAuthHandlerError {
 impl From<ApplicationMetadataError> for AppAuthHandlerError {
     fn from(err: ApplicationMetadataError) -> AppAuthHandlerError {
         AppAuthHandlerError::InvalidMessageError(format!("{}", err))
-    }
-}
-
-impl From<gameroom_database::DatabaseError> for AppAuthHandlerError {
-    fn from(err: gameroom_database::DatabaseError) -> AppAuthHandlerError {
-        AppAuthHandlerError::DatabaseError(format!("{}", err))
-    }
-}
-
-impl From<diesel::result::Error> for AppAuthHandlerError {
-    fn from(err: diesel::result::Error) -> Self {
-        AppAuthHandlerError::DatabaseError(format!("Error performing query: {}", err))
     }
 }
 

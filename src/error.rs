@@ -18,13 +18,11 @@ use std::fmt;
 use sawtooth_sdk::signing::Error as KeyGenError;
 
 use crate::authorization_handler::AppAuthHandlerError;
-use gameroom_database::DatabaseError;
 
 #[derive(Debug)]
 pub enum EventListenerError {
     LoggingInitializationError(flexi_logger::FlexiLoggerError),
     ConfigurationError(Box<ConfigurationError>),
-    DatabaseError(Box<DatabaseError>),
     AppAuthHandlerError(AppAuthHandlerError),
     KeyGenError(KeyGenError),
     GetNodeError(GetNodeError),
@@ -35,7 +33,6 @@ impl Error for EventListenerError {
         match self {
             EventListenerError::LoggingInitializationError(err) => Some(err),
             EventListenerError::ConfigurationError(err) => Some(err),
-            EventListenerError::DatabaseError(err) => Some(&**err),
             EventListenerError::AppAuthHandlerError(err) => Some(err),
             EventListenerError::KeyGenError(err) => Some(err),
             EventListenerError::GetNodeError(err) => Some(err),
@@ -50,7 +47,6 @@ impl fmt::Display for EventListenerError {
                 write!(f, "Logging initialization error: {}", e)
             }
             EventListenerError::ConfigurationError(e) => write!(f, "Coniguration error: {}", e),
-            EventListenerError::DatabaseError(e) => write!(f, "Database error: {}", e),
             EventListenerError::AppAuthHandlerError(e) => write!(
                 f,
                 "The application authorization handler returned an error: {}",
@@ -73,12 +69,6 @@ impl fmt::Display for EventListenerError {
 impl From<flexi_logger::FlexiLoggerError> for EventListenerError {
     fn from(err: flexi_logger::FlexiLoggerError) -> EventListenerError {
         EventListenerError::LoggingInitializationError(err)
-    }
-}
-
-impl From<DatabaseError> for EventListenerError {
-    fn from(err: DatabaseError) -> EventListenerError {
-        EventListenerError::DatabaseError(Box::new(err))
     }
 }
 

@@ -37,6 +37,7 @@ use crate::application_metadata::ApplicationMetadata;
 
 use self::sabre::setup_tp;
 use db_models::models::{NewConsortiumProposal, NewConsortiumMember, Consortium, NewConsortiumService, NewProposalVoteRecord};
+use crate::config::EventListenerConfig;
 
 /// default value if the client should attempt to reconnet if ws connection is lost
 const RECONNECT: bool = true;
@@ -48,7 +49,7 @@ const RECONNECT_LIMIT: u64 = 10;
 const CONNECTION_TIMEOUT: u64 = 60;
 
 pub fn run(
-    splinterd_url: String,
+    config: EventListenerConfig,
     node_id: String,
     private_key: String,
     igniter: Igniter,
@@ -56,13 +57,13 @@ pub fn run(
 
     // TODO: Resubscribe to all the earlier circuits
     let mut ws = WebSocketClient::new(
-        &format!("{}/ws/admin/register/consortium", splinterd_url),
+        &format!("{}/ws/admin/register/consortium", config.splinterd_url()),
         move |ctx, event| {
             if let Err(err) = process_admin_event(
                 event,
                 &node_id,
                 &private_key,
-                &splinterd_url,
+                config.clone(),
                 ctx.igniter(),
             ) {
                 error!("Failed to process admin event: {}", err);
@@ -100,9 +101,10 @@ fn process_admin_event(
     admin_event: AdminServiceEvent,
     node_id: &str,
     private_key: &str,
-    url: &str,
+    config: EventListenerConfig,
     igniter: Igniter,
 ) -> Result<(), AppAuthHandlerError> {
+    let url = config.splinterd_url();
     match admin_event {
         AdminServiceEvent::ProposalSubmitted(msg_proposal) => {
             let time = SystemTime::now();
@@ -128,7 +130,7 @@ fn process_admin_event(
             // TODO: Notify event listener that an event is available
         }
         AdminServiceEvent::ProposalVote((msg_proposal, signer_public_key)) => {
-            let proposal = get_pending_proposal_with_circuit_id(&pool, &msg_proposal.circuit_id)?;
+//            let proposal = get_pending_proposal_with_circuit_id(&pool, &msg_proposal.circuit_id)?;
             let vote = msg_proposal
                 .votes
                 .iter()
@@ -136,9 +138,10 @@ fn process_admin_event(
                 .ok_or_else(|| {
                     AppAuthHandlerError::InvalidMessageError("Missing vote from signer".to_string())
                 })?;
+            let proposal_id: i64 = 1234;
             let time = SystemTime::now();
             let vote = NewProposalVoteRecord {
-                proposal_id: proposal.id,
+                proposal_id,
                 voter_public_key: to_hex(&signer_public_key),
                 voter_node_id: vote.voter_node_id.to_string(),
                 vote: "Accept".to_string(),
@@ -148,7 +151,7 @@ fn process_admin_event(
             Ok(())
         }
         AdminServiceEvent::ProposalAccepted((msg_proposal, signer_public_key)) => {
-            let proposal = get_pending_proposal_with_circuit_id(&pool, &msg_proposal.circuit_id)?;
+//            let proposal = get_pending_proposal_with_circuit_id(&pool, &msg_proposal.circuit_id)?;
             let time = SystemTime::now();
             let vote = msg_proposal
                 .votes
@@ -158,17 +161,20 @@ fn process_admin_event(
                     AppAuthHandlerError::InvalidMessageError("Missing vote from signer".to_string())
                 })?;
 
+            let proposal_id: i64 = 1234;
             let vote = NewProposalVoteRecord {
-                proposal_id: proposal.id,
+                proposal_id,
                 voter_public_key: to_hex(&signer_public_key),
                 voter_node_id: vote.voter_node_id.to_string(),
                 vote: "Accept".to_string(),
                 created_time: time,
             };
             // TODO: Proposal is accepted
+            Ok(())
         }
         AdminServiceEvent::ProposalRejected((msg_proposal, signer_public_key)) => {
-            let proposal = get_pending_proposal_with_circuit_id(&pool, &msg_proposal.circuit_id)?;
+//            let proposal = get_pending_proposal_with_circuit_id(&pool, &msg_proposal.circuit_id)?;
+            let proposal_id: i64 = 1234;
             let time = SystemTime::now();
             let vote = msg_proposal
                 .votes
@@ -179,13 +185,14 @@ fn process_admin_event(
                 })?;
 
             let vote = NewProposalVoteRecord {
-                proposal_id: proposal.id,
+                proposal_id,
                 voter_public_key: to_hex(&signer_public_key),
                 voter_node_id: vote.voter_node_id.to_string(),
                 vote: "Reject".to_string(),
                 created_time: time,
             };
             // TODO: Proposal is rejected
+            Ok(())
         }
         AdminServiceEvent::CircuitReady(msg_proposal) => {
 
@@ -227,6 +234,7 @@ fn process_admin_event(
                 &msg_proposal.circuit_id,
                 &proposal.requester_node_id,
                 &proposal.requester,
+                config.clone(),
             );
 
             let mut xo_ws = WebSocketClient::new(
@@ -252,6 +260,7 @@ fn process_admin_event(
                     &url_to_string,
                     &msg_proposal.circuit_id.clone(),
                     &service_id.clone(),
+                    config.clone(),
                 ) {
                     Ok(f) => f,
                     Err(err) => {

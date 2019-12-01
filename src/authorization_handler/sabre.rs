@@ -42,6 +42,7 @@ use sawtooth_sdk::signing::secp256k1::Secp256k1PrivateKey;
 use sawtooth_sdk::signing::{create_context, CryptoFactory, Signer};
 
 use super::AppAuthHandlerError;
+use crate::config::{EventListenerConfig, DeploymentConfig};
 
 /// The Sawtooth Sabre transaction family name (sabre)
 const SABRE_FAMILY_NAME: &str = "sabre";
@@ -66,8 +67,6 @@ const XO_NAME: &str = "xo";
 const XO_VERSION: &str = "0.3.3";
 pub const XO_PREFIX: &str = "5b7349";
 
-const XO_CONTRACT_PATH: &str = "/var/lib/gameroomd/xo-tp-rust.wasm";
-
 /// Create and submit the Sabre transactions to setup the XO smart contract.
 pub fn setup_tp(
     private_key: &str,
@@ -75,6 +74,7 @@ pub fn setup_tp(
     splinterd_url: &str,
     circuit_id: &str,
     service_id: &str,
+    config: EventListenerConfig,
 ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send + 'static>, AppAuthHandlerError> {
     let context = create_context("secp256k1")?;
     let factory = CryptoFactory::new(&*context);
@@ -91,14 +91,15 @@ pub fn setup_tp(
         return Ok(Box::new(future::ok(())));
     }
 
+    let tp_name = config.deployment_config().tp_name();
     // Create the transactions and batch them
     let txns = vec![
-        create_contract_registry_txn(scabbard_admin_keys.clone(), &signer)?,
-        upload_contract_txn(&signer)?,
-        create_tp_namespace_registry_txn(scabbard_admin_keys.clone(), &signer)?,
-        tp_namespace_permissions_txn(&signer)?,
+        create_contract_registry_txn(scabbard_admin_keys.clone(), &signer, tp_name)?,
+        upload_contract_txn(&signer, config.deployment_config())?,
+        create_tp_namespace_registry_txn(scabbard_admin_keys.clone(), &signer, config.deployment_config())?,
+        tp_namespace_permissions_txn(&signer, config.deployment_config())?,
         create_pike_namespace_registry_txn(scabbard_admin_keys, &signer)?,
-        pike_namespace_permissions_txn(&signer)?,
+        pike_namespace_permissions_txn(&signer, config.deployment_config())?,
     ];
     let batch = create_batch(txns, &signer)?;
     let batch_list = create_batch_list_from_one(batch);
@@ -157,9 +158,10 @@ pub fn setup_tp(
 fn create_contract_registry_txn(
     owners: Vec<String>,
     signer: &Signer,
+    tp_name: &str,
 ) -> Result<Transaction, AppAuthHandlerError> {
     let action = CreateContractRegistryActionBuilder::new()
-        .with_name(XO_NAME.into())
+        .with_name(tp_name.to_string())
         .with_owners(owners)
         .build()?;
     let payload = SabrePayloadBuilder::new()
@@ -167,15 +169,15 @@ fn create_contract_registry_txn(
         .build()?
         .into_bytes()?;
     let addresses = vec![
-        compute_contract_registry_address(XO_NAME),
+        compute_contract_registry_address(tp_name),
         ADMINISTRATORS_SETTING_ADDRESS.into(),
     ];
 
     create_txn(addresses, payload, signer)
 }
 
-fn upload_contract_txn(signer: &Signer) -> Result<Transaction, AppAuthHandlerError> {
-    let contract_path = Path::new(XO_CONTRACT_PATH);
+fn upload_contract_txn(signer: &Signer, deploymentConfig: &DeploymentConfig) -> Result<Transaction, AppAuthHandlerError> {
+    let contract_path = Path::new(deploymentConfig.tp_path());
     let contract_file = File::open(contract_path).map_err(|err| {
         AppAuthHandlerError::SabreError(format!("Failed to load contract: {}", err))
     })?;
@@ -188,11 +190,11 @@ fn upload_contract_txn(signer: &Signer) -> Result<Transaction, AppAuthHandlerErr
     let action_addresses = vec![
         SMART_PERMISSION_PREFIX.into(),
         PIKE_PREFIX.into(),
-        XO_PREFIX.into(),
+        deploymentConfig.tp_prefix().to_string(),
     ];
     let action = CreateContractActionBuilder::new()
-        .with_name(XO_NAME.into())
-        .with_version(XO_VERSION.into())
+        .with_name(deploymentConfig.tp_name().to_string())
+        .with_version(deploymentConfig.tp_version().to_string())
         .with_inputs(action_addresses.clone())
         .with_outputs(action_addresses)
         .with_contract(contract)
@@ -202,8 +204,8 @@ fn upload_contract_txn(signer: &Signer) -> Result<Transaction, AppAuthHandlerErr
         .build()?
         .into_bytes()?;
     let addresses = vec![
-        compute_contract_registry_address(XO_NAME),
-        compute_contract_address(XO_NAME, XO_VERSION),
+        compute_contract_registry_address(deploymentConfig.tp_name()),
+        compute_contract_address(deploymentConfig.tp_name(), deploymentConfig.tp_version()),
     ];
 
     create_txn(addresses, payload, signer)
@@ -212,9 +214,10 @@ fn upload_contract_txn(signer: &Signer) -> Result<Transaction, AppAuthHandlerErr
 fn create_tp_namespace_registry_txn(
     owners: Vec<String>,
     signer: &Signer,
+    deploymentConfig: &DeploymentConfig,
 ) -> Result<Transaction, AppAuthHandlerError> {
     let action = CreateNamespaceRegistryActionBuilder::new()
-        .with_namespace(XO_PREFIX.into())
+        .with_namespace(deploymentConfig.tp_prefix().to_string())
         .with_owners(owners)
         .build()?;
     let payload = SabrePayloadBuilder::new()
@@ -222,17 +225,17 @@ fn create_tp_namespace_registry_txn(
         .build()?
         .into_bytes()?;
     let addresses = vec![
-        compute_namespace_registry_address(XO_PREFIX)?,
+        compute_namespace_registry_address(deploymentConfig.tp_prefix())?,
         ADMINISTRATORS_SETTING_ADDRESS.into(),
     ];
 
     create_txn(addresses, payload, signer)
 }
 
-fn tp_namespace_permissions_txn(signer: &Signer) -> Result<Transaction, AppAuthHandlerError> {
+fn tp_namespace_permissions_txn(signer: &Signer, deploymentConfig: &DeploymentConfig) -> Result<Transaction, AppAuthHandlerError> {
     let action = CreateNamespaceRegistryPermissionActionBuilder::new()
-        .with_namespace(XO_PREFIX.into())
-        .with_contract_name(XO_NAME.into())
+        .with_namespace(deploymentConfig.tp_prefix().to_string())
+        .with_contract_name(deploymentConfig.tp_name().to_string())
         .with_read(true)
         .with_write(true)
         .build()?;
@@ -241,7 +244,7 @@ fn tp_namespace_permissions_txn(signer: &Signer) -> Result<Transaction, AppAuthH
         .build()?
         .into_bytes()?;
     let addresses = vec![
-        compute_namespace_registry_address(XO_PREFIX)?,
+        compute_namespace_registry_address(deploymentConfig.tp_prefix())?,
         ADMINISTRATORS_SETTING_ADDRESS.into(),
     ];
 
@@ -268,10 +271,10 @@ fn create_pike_namespace_registry_txn(
     create_txn(addresses, payload, signer)
 }
 
-fn pike_namespace_permissions_txn(signer: &Signer) -> Result<Transaction, AppAuthHandlerError> {
+fn pike_namespace_permissions_txn(signer: &Signer, deploymentConfig: &DeploymentConfig) -> Result<Transaction, AppAuthHandlerError> {
     let action = CreateNamespaceRegistryPermissionActionBuilder::new()
         .with_namespace(PIKE_PREFIX.into())
-        .with_contract_name(XO_NAME.into())
+        .with_contract_name(deploymentConfig.tp_name().to_string())
         .with_read(true)
         .with_write(false)
         .build()?;
@@ -372,9 +375,9 @@ pub fn create_batch_list_from_one(batch: Batch) -> BatchList {
     batch_list
 }
 
-pub fn get_xo_contract_address() -> String {
-    compute_contract_address(XO_NAME, XO_VERSION)
-}
+//pub fn get_xo_contract_address() -> String {
+//    compute_contract_address(XO_NAME, XO_VERSION)
+//}
 
 /// Creates a nonce appropriate for a TransactionHeader
 fn create_nonce() -> String {

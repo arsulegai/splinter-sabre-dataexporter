@@ -21,6 +21,7 @@ extern crate log;
 extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
+extern crate serde_yaml;
 extern crate db_models;
 
 mod application_metadata;
@@ -102,7 +103,7 @@ fn run() -> Result<(), EventListenerError> {
     let reactor = Reactor::new();
 
     authorization_handler::run(
-        config.splinterd_url().into(),
+        config,
         node.identity.clone(),
         private_key.as_hex(),
         reactor.igniter(),

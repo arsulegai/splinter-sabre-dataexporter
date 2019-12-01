@@ -17,21 +17,24 @@
 
 use std::{error::Error, fmt, time::SystemTime};
 use splinter::service::scabbard::StateChangeEvent;
+use crate::config::EventListenerConfig;
 
 pub struct SabreProcessor {
     circuit_id: String,
     node_id: String,
     requester: String,
     contract_address: String,
+    config: EventListenerConfig,
 }
 
 impl SabreProcessor {
-    pub fn new(circuit_id: &str, node_id: &str, requester: &str) -> Self {
+    pub fn new(circuit_id: &str, node_id: &str, requester: &str, config: EventListenerConfig) -> Self {
         SabreProcessor {
             circuit_id: circuit_id.into(),
             node_id: node_id.to_string(),
             requester: requester.to_string(),
-            contract_address: get_xo_contract_address(),
+            contract_address: config.deployment_config().tp_prefix().to_string(),
+            config,
         }
     }
 
@@ -48,14 +51,15 @@ impl SabreProcessor {
         debug!("Received state change: {}", change);
         match change {
             StateChangeEvent::Set { key, .. } if key == &self.contract_address => {
-                debug!("Xo contract created successfully");
+                debug!("TP contract created successfully");
                 let time = SystemTime::now();
                 // TODO: Circuit is created
                 Ok(())
             }
-            StateChangeEvent::Set { key, value } if &key[..6] == XO_PREFIX => {
+            StateChangeEvent::Set { key, value } if &key[..6] == self.config.deployment_config().tp_prefix() => {
                 let time = SystemTime::now();
                 // TODO: Change event from the deployed smart contract
+                Ok(())
             }
             StateChangeEvent::Delete { .. } => {
                 debug!("Delete state skipping...");
@@ -86,7 +90,7 @@ impl fmt::Display for StateDeltaError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             StateDeltaError::SDError(err) => {
-                write!(f, "Failed to parse xo payload: {}", err)
+                write!(f, "Failed to parse tp payload: {}", err)
             }
         }
     }

@@ -30,7 +30,6 @@ diesel = { version = "1.0.0", features = ["serde_json"] }
 flate2 = "1.0.10"
 flexi_logger = "0.14"
 futures = "0.1"
-gameroom-database = { path = "../database" }
 hyper = "0.12"
 log = "0.4"
 openssl = "0.10"
@@ -46,6 +45,7 @@ splinter = { git = "https://github.com/cargill/splinter", features = ["events"]}
 tokio = "0.1"
 uuid = { version = "0.7", features = ["v4"]}
 db-models = { git = "https://github.com/arsulegai/splinter-models" }
+serde_yaml = "0.8.11"
 
 [features]
 test-node-endpoint = []
