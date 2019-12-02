@@ -23,6 +23,7 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate serde_yaml;
 extern crate db_models;
+extern crate splinter;
 
 mod application_metadata;
 mod authorization_handler;

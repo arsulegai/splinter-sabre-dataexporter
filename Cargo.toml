@@ -1,4 +1,5 @@
 # Copyright 2019 Cargill Incorporated
+# Copyright 2019 Walmart Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +42,7 @@ sawtooth-sdk = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
-splinter = { git = "https://github.com/cargill/splinter", features = ["events"]}
+splinter = { git = "https://github.com/cargill/splinter", features = ["events"], rev="f8e3a1105"}
 tokio = "0.1"
 uuid = { version = "0.7", features = ["v4"]}
 db-models = { git = "https://github.com/arsulegai/splinter-models" }
