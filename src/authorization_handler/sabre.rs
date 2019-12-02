@@ -63,10 +63,6 @@ const SMART_PERMISSION_PREFIX: &str = "00ec03";
 
 const PIKE_PREFIX: &str = "cad11d";
 
-const XO_NAME: &str = "xo";
-const XO_VERSION: &str = "0.3.3";
-pub const XO_PREFIX: &str = "5b7349";
-
 /// Create and submit the Sabre transactions to setup the XO smart contract.
 pub fn setup_tp(
     private_key: &str,

@@ -95,7 +95,7 @@ fn run() -> Result<(), EventListenerError> {
     // Generate a public/private key pair
     let context = create_context("secp256k1")?;
     let private_key = context.new_random_private_key()?;
-    let public_key = context.get_public_key(&*private_key)?;
+    let _public_key = context.get_public_key(&*private_key)?;
 
     // Get splinterd node information
     let node = get_node(config.splinterd_url())?;

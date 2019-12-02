@@ -23,13 +23,11 @@ mod state_delta;
 use std::fmt::Write;
 use std::time::SystemTime;
 
-use diesel::connection::Connection;
 use splinter::{
     admin::messages::{
         AdminServiceEvent, CircuitProposal, CreateCircuit, SplinterNode, SplinterService,
     },
     events::{Igniter, WebSocketClient, WebSocketError, WsResponse},
-    service::scabbard::StateChangeEvent,
 };
 use state_delta::SabreProcessor;
 

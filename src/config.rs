@@ -27,7 +27,6 @@ use splinter::node_registry::Node;
 use tokio::runtime::Runtime;
 
 use crate::error::{ConfigurationError, GetNodeError};
-use openssl::envelope::Open;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeploymentConfig {
