@@ -42,7 +42,7 @@ impl DeploymentConfig {
             Some(file_present) => file_present,
             None => return Err(ConfigurationError::MissingValue("Deployment configuration file is missing".to_string())),
         };
-        let f = match std::fs::File::open("something.yaml") {
+        let f = match std::fs::File::open(file) {
             Ok(file) => file,
             Err(err) => return Err(ConfigurationError::MissingValue(format!("Invalid deployment configuration {}", err.to_string()))),
         };
