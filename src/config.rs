@@ -34,6 +34,8 @@ pub struct DeploymentConfig {
     tp_version: String,
     tp_prefix: String,
     tp_path: String,
+    kafka_topic: String,
+    kafka_url: String,
 }
 
 impl DeploymentConfig {
@@ -56,6 +58,8 @@ impl DeploymentConfig {
             tp_version: parsed.tp_version,
             tp_prefix: parsed.tp_prefix,
             tp_path: parsed.tp_path,
+            kafka_topic: parsed.kafka_topic,
+            kafka_url: parsed.kafka_url,
         })
     }
 
@@ -73,6 +77,14 @@ impl DeploymentConfig {
 
     pub fn tp_path(&self) -> &str {
         &self.tp_path
+    }
+
+    pub fn kafka_topic(&self) -> &str {
+        &self.kafka_topic
+    }
+
+    pub fn kafka_url(&self) -> &str {
+        &self.kafka_url
     }
 }
 

@@ -19,3 +19,7 @@ tp_version:
 tp_prefix:
 
 tp_path:
+
+kafka_topic:
+
+kafka_url:

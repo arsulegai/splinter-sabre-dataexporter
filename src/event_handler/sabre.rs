@@ -41,7 +41,7 @@ use sawtooth_sdk::messages::transaction::{Transaction, TransactionHeader};
 use sawtooth_sdk::signing::secp256k1::Secp256k1PrivateKey;
 use sawtooth_sdk::signing::{create_context, CryptoFactory, Signer};
 
-use super::AppAuthHandlerError;
+use super::EventHandlerError;
 use crate::config::{EventListenerConfig, DeploymentConfig};
 
 /// The Sawtooth Sabre transaction family name (sabre)
@@ -71,7 +71,7 @@ pub fn setup_tp(
     circuit_id: &str,
     service_id: &str,
     config: EventListenerConfig,
-) -> Result<Box<dyn Future<Item = (), Error = ()> + Send + 'static>, AppAuthHandlerError> {
+) -> Result<Box<dyn Future<Item = (), Error = ()> + Send + 'static>, EventHandlerError> {
     let context = create_context("secp256k1")?;
     let factory = CryptoFactory::new(&*context);
     let private_key = Secp256k1PrivateKey::from_hex(private_key)?;
@@ -100,7 +100,7 @@ pub fn setup_tp(
     let batch = create_batch(txns, &signer)?;
     let batch_list = create_batch_list_from_one(batch);
     let payload = batch_list.write_to_bytes().map_err(|err| {
-        AppAuthHandlerError::SawtoothError(format!("failed to serialize batch list: {}", err))
+        EventHandlerError::SawtoothError(format!("failed to serialize batch list: {}", err))
     })?;
     // Submit the batch to the scabbard service
     let body_stream = futures::stream::once::<_, std::io::Error>(Ok(payload));
@@ -111,7 +111,7 @@ pub fn setup_tp(
         ))
         .method("POST")
         .body(Body::wrap_stream(body_stream))
-        .map_err(|err| AppAuthHandlerError::BatchSubmitError(format!("{}", err)))?;
+        .map_err(|err| EventHandlerError::BatchSubmitError(format!("{}", err)))?;
 
     let client = Client::new();
 
@@ -126,7 +126,7 @@ pub fn setup_tp(
                         .concat2()
                         .wait()
                         .map_err(|err| {
-                            AppAuthHandlerError::BatchSubmitError(format!(
+                            EventHandlerError::BatchSubmitError(format!(
                                 "The client encountered an error {}",
                                 err
                             ))
@@ -135,14 +135,14 @@ pub fn setup_tp(
 
                     match status {
                         StatusCode::ACCEPTED => Ok(()),
-                        _ => Err(AppAuthHandlerError::BatchSubmitError(format!(
+                        _ => Err(EventHandlerError::BatchSubmitError(format!(
                             "The server returned an error. Status: {}, {}",
                             status,
                             String::from_utf8(body)?
                         ))),
                     }
                 }
-                Err(err) => Err(AppAuthHandlerError::BatchSubmitError(format!(
+                Err(err) => Err(EventHandlerError::BatchSubmitError(format!(
                     "The client encountered an error {}",
                     err
                 ))),
@@ -155,7 +155,7 @@ fn create_contract_registry_txn(
     owners: Vec<String>,
     signer: &Signer,
     tp_name: &str,
-) -> Result<Transaction, AppAuthHandlerError> {
+) -> Result<Transaction, EventHandlerError> {
     let action = CreateContractRegistryActionBuilder::new()
         .with_name(tp_name.to_string())
         .with_owners(owners)
@@ -172,15 +172,15 @@ fn create_contract_registry_txn(
     create_txn(addresses, payload, signer)
 }
 
-fn upload_contract_txn(signer: &Signer, deploymentConfig: &DeploymentConfig) -> Result<Transaction, AppAuthHandlerError> {
+fn upload_contract_txn(signer: &Signer, deploymentConfig: &DeploymentConfig) -> Result<Transaction, EventHandlerError> {
     let contract_path = Path::new(deploymentConfig.tp_path());
     let contract_file = File::open(contract_path).map_err(|err| {
-        AppAuthHandlerError::SabreError(format!("Failed to load contract: {}", err))
+        EventHandlerError::SabreError(format!("Failed to load contract: {}", err))
     })?;
     let mut buf_reader = BufReader::new(contract_file);
     let mut contract = Vec::new();
     buf_reader.read_to_end(&mut contract).map_err(|err| {
-        AppAuthHandlerError::SabreError(format!("IoError while reading contract: {}", err))
+        EventHandlerError::SabreError(format!("IoError while reading contract: {}", err))
     })?;
 
     let action_addresses = vec![
@@ -211,7 +211,7 @@ fn create_tp_namespace_registry_txn(
     owners: Vec<String>,
     signer: &Signer,
     deploymentConfig: &DeploymentConfig,
-) -> Result<Transaction, AppAuthHandlerError> {
+) -> Result<Transaction, EventHandlerError> {
     let action = CreateNamespaceRegistryActionBuilder::new()
         .with_namespace(deploymentConfig.tp_prefix().to_string())
         .with_owners(owners)
@@ -228,7 +228,7 @@ fn create_tp_namespace_registry_txn(
     create_txn(addresses, payload, signer)
 }
 
-fn tp_namespace_permissions_txn(signer: &Signer, deploymentConfig: &DeploymentConfig) -> Result<Transaction, AppAuthHandlerError> {
+fn tp_namespace_permissions_txn(signer: &Signer, deploymentConfig: &DeploymentConfig) -> Result<Transaction, EventHandlerError> {
     let action = CreateNamespaceRegistryPermissionActionBuilder::new()
         .with_namespace(deploymentConfig.tp_prefix().to_string())
         .with_contract_name(deploymentConfig.tp_name().to_string())
@@ -250,7 +250,7 @@ fn tp_namespace_permissions_txn(signer: &Signer, deploymentConfig: &DeploymentCo
 fn create_pike_namespace_registry_txn(
     owners: Vec<String>,
     signer: &Signer,
-) -> Result<Transaction, AppAuthHandlerError> {
+) -> Result<Transaction, EventHandlerError> {
     let action = CreateNamespaceRegistryActionBuilder::new()
         .with_namespace(PIKE_PREFIX.into())
         .with_owners(owners)
@@ -267,7 +267,7 @@ fn create_pike_namespace_registry_txn(
     create_txn(addresses, payload, signer)
 }
 
-fn pike_namespace_permissions_txn(signer: &Signer, deploymentConfig: &DeploymentConfig) -> Result<Transaction, AppAuthHandlerError> {
+fn pike_namespace_permissions_txn(signer: &Signer, deploymentConfig: &DeploymentConfig) -> Result<Transaction, EventHandlerError> {
     let action = CreateNamespaceRegistryPermissionActionBuilder::new()
         .with_namespace(PIKE_PREFIX.into())
         .with_contract_name(deploymentConfig.tp_name().to_string())
@@ -290,7 +290,7 @@ fn create_txn(
     addresses: Vec<String>,
     payload: Vec<u8>,
     signer: &Signer,
-) -> Result<Transaction, AppAuthHandlerError> {
+) -> Result<Transaction, EventHandlerError> {
     let public_key = signer.get_public_key()?.as_hex();
 
     let mut txn = Transaction::new();
@@ -312,7 +312,7 @@ fn create_txn(
     txn.set_payload(payload);
 
     let txn_header_bytes = txn_header.write_to_bytes().map_err(|err| {
-        AppAuthHandlerError::SawtoothError(format!(
+        EventHandlerError::SawtoothError(format!(
             "failed to serialize transaction header to bytes: {}",
             err
         ))
@@ -332,7 +332,7 @@ fn create_txn(
 /// * `txns` - list of Transactions
 /// * `signer` - the signer to be used to sign the transaction
 /// * `public_key` - the public key associated with the signer
-pub fn create_batch(txns: Vec<Transaction>, signer: &Signer) -> Result<Batch, AppAuthHandlerError> {
+pub fn create_batch(txns: Vec<Transaction>, signer: &Signer) -> Result<Batch, EventHandlerError> {
     let public_key = signer.get_public_key()?.as_hex();
 
     let mut batch = Batch::new();
@@ -347,7 +347,7 @@ pub fn create_batch(txns: Vec<Transaction>, signer: &Signer) -> Result<Batch, Ap
     batch.set_transactions(protobuf::RepeatedField::from_vec(txns));
 
     let batch_header_bytes = batch_header.write_to_bytes().map_err(|err| {
-        AppAuthHandlerError::SawtoothError(format!(
+        EventHandlerError::SawtoothError(format!(
             "failed to serialize batch header to bytes: {}",
             err
         ))
@@ -398,11 +398,11 @@ fn bytes_to_hex_str(b: &[u8]) -> String {
 /// # Arguments
 ///
 /// * `namespace` - the address prefix for this namespace
-fn compute_namespace_registry_address(namespace: &str) -> Result<String, AppAuthHandlerError> {
+fn compute_namespace_registry_address(namespace: &str) -> Result<String, EventHandlerError> {
     let prefix = match namespace.get(..6) {
         Some(x) => x,
         None => {
-            return Err(AppAuthHandlerError::SabreError(format!(
+            return Err(EventHandlerError::SabreError(format!(
                 "Namespace must be at least 6 characters long: {}",
                 namespace
             )));

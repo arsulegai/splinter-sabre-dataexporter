@@ -24,11 +24,13 @@ extern crate serde_json;
 extern crate serde_yaml;
 extern crate db_models;
 extern crate splinter;
+extern crate kafka;
 
 mod application_metadata;
-mod authorization_handler;
+mod event_handler;
 mod config;
 mod error;
+mod proto;
 
 use std::thread;
 
@@ -103,7 +105,7 @@ fn run() -> Result<(), EventListenerError> {
 
     let reactor = Reactor::new();
 
-    authorization_handler::run(
+    event_handler::run(
         config,
         node.identity.clone(),
         private_key.as_hex(),

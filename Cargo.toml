@@ -47,6 +47,7 @@ tokio = "0.1"
 uuid = { version = "0.7", features = ["v4"]}
 db-models = { git = "https://github.com/arsulegai/splinter-models" }
 serde_yaml = "0.8.11"
+kafka = "0.8.0"
 
 [features]
 test-node-endpoint = []
@@ -55,3 +56,7 @@ test-authorization-handler = []
 [[bin]]
 name = "event-listener"
 path = "src/main.rs"
+
+[build-dependencies]
+protoc-rust = "2.0"
+glob = "0.2"

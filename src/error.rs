@@ -1,3 +1,4 @@
+// Copyright 2019 Cargill Incorporated
 // Copyright 2019 Walmart Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,13 +18,13 @@ use std::fmt;
 
 use sawtooth_sdk::signing::Error as KeyGenError;
 
-use crate::authorization_handler::AppAuthHandlerError;
+use crate::event_handler::EventHandlerError;
 
 #[derive(Debug)]
 pub enum EventListenerError {
     LoggingInitializationError(flexi_logger::FlexiLoggerError),
     ConfigurationError(Box<ConfigurationError>),
-    AppAuthHandlerError(AppAuthHandlerError),
+    AppAuthHandlerError(EventHandlerError),
     KeyGenError(KeyGenError),
     GetNodeError(GetNodeError),
 }
@@ -72,8 +73,8 @@ impl From<flexi_logger::FlexiLoggerError> for EventListenerError {
     }
 }
 
-impl From<AppAuthHandlerError> for EventListenerError {
-    fn from(err: AppAuthHandlerError) -> EventListenerError {
+impl From<EventHandlerError> for EventListenerError {
+    fn from(err: EventHandlerError) -> EventListenerError {
         EventListenerError::AppAuthHandlerError(err)
     }
 }

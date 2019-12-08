@@ -1,5 +1,6 @@
 /*
  * Copyright 2019 Cargill Incorporated
+ * Copyright 2019 Walmart Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +17,12 @@
  */
 
 mod error;
-pub use error::AppAuthHandlerError;
+pub use error::EventHandlerError;
 pub mod sabre;
 mod state_delta;
 
 use std::fmt::Write;
-use std::time::SystemTime;
+use std::time::{SystemTime, Duration};
 
 use splinter::{
     admin::messages::{
@@ -36,6 +37,9 @@ use crate::application_metadata::ApplicationMetadata;
 use self::sabre::setup_tp;
 use db_models::models::{NewConsortiumProposal, NewConsortiumMember, Consortium, NewConsortiumService, NewProposalVoteRecord};
 use crate::config::EventListenerConfig;
+use kafka::producer::{Producer, RequiredAcks, Record};
+use crate::proto::pubsub::{Message, Message_MessageType, ProposalSubmit, ProposalVote, ProposalAccept, ProposalReject, ProposalReady};
+use protobuf::Message as Msg;
 
 /// default value if the client should attempt to reconnet if ws connection is lost
 const RECONNECT: bool = true;
@@ -51,7 +55,7 @@ pub fn run(
     node_id: String,
     private_key: String,
     igniter: Igniter,
-) -> Result<(), AppAuthHandlerError> {
+) -> Result<(), EventHandlerError> {
 
     // TODO: Resubscribe to all the earlier circuits
     let mut ws = WebSocketClient::new(
@@ -92,7 +96,7 @@ pub fn run(
         }
     });
 
-    igniter.start_ws(&ws).map_err(AppAuthHandlerError::from)
+    igniter.start_ws(&ws).map_err(EventHandlerError::from)
 }
 
 fn process_admin_event(
@@ -101,7 +105,18 @@ fn process_admin_event(
     private_key: &str,
     config: EventListenerConfig,
     igniter: Igniter,
-) -> Result<(), AppAuthHandlerError> {
+) -> Result<(), EventHandlerError> {
+
+    let mut producer =
+        match Producer::from_hosts(vec!(config.deployment_config().kafka_url().to_string()))
+            .with_ack_timeout(Duration::from_secs(5))
+            .with_required_acks(RequiredAcks::One)
+            .create() {
+            Ok(created) => created,
+            Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+    };
+    let topic = config.deployment_config().kafka_topic().to_string();
+
     let url = config.splinterd_url();
     match admin_event {
         AdminServiceEvent::ProposalSubmitted(msg_proposal) => {
@@ -109,7 +124,7 @@ fn process_admin_event(
 
             // convert requester public key to hex
             let requester = to_hex(&msg_proposal.requester);
-            let proposal = parse_proposal(&msg_proposal, time, requester);
+            let proposal = parse_proposal(&msg_proposal, time, requester.clone());
 
             let consortium = parse_consortium(&msg_proposal.circuit, time)?;
 
@@ -124,8 +139,26 @@ fn process_admin_event(
                 &msg_proposal.circuit.members,
                 time,
             );
+            let mut proposal_submit = ProposalSubmit::new();
+            proposal_submit.set_requester(requester);
+            proposal_submit.set_requester_node_id(proposal.requester_node_id.clone());
+            proposal_submit.set_circuit_id(proposal.circuit_id.clone());
+            let message_bytes = match proposal_submit.write_to_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            };
+            let mut message = Message::new();
+            message.set_field_type(Message_MessageType::PROPOSAL_SUBMIT);
+            message.set_message(message_bytes);
+            let to_send_bytes = match message.write_to_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            };
+            match producer.send(&Record::from_value(&topic, to_send_bytes)) {
+                Ok(_) => info!("Wrote to Kafka about Proposal Update"),
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            }
             Ok(())
-            // TODO: Notify event listener that an event is available
         }
         AdminServiceEvent::ProposalVote((msg_proposal, signer_public_key)) => {
 //            let proposal = get_pending_proposal_with_circuit_id(&pool, &msg_proposal.circuit_id)?;
@@ -134,7 +167,7 @@ fn process_admin_event(
                 .iter()
                 .find(|vote| vote.public_key == signer_public_key)
                 .ok_or_else(|| {
-                    AppAuthHandlerError::InvalidMessageError("Missing vote from signer".to_string())
+                    EventHandlerError::InvalidMessageError("Missing vote from signer".to_string())
                 })?;
             let proposal_id: i64 = 1234;
             let time = SystemTime::now();
@@ -145,7 +178,25 @@ fn process_admin_event(
                 vote: "Accept".to_string(),
                 created_time: time,
             };
-            // TODO: Send an event that a vote is ready
+            let mut proposal_vote = ProposalVote::new();
+            proposal_vote.set_voter(vote.voter_public_key.clone());
+            proposal_vote.set_voter_node_id(vote.voter_node_id.clone());
+            proposal_vote.set_circuit_id(msg_proposal.circuit_id.clone());
+            let message_bytes = match proposal_vote.write_to_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            };
+            let mut message = Message::new();
+            message.set_field_type(Message_MessageType::PROPOSAL_VOTE);
+            message.set_message(message_bytes);
+            let to_send_bytes = match message.write_to_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            };
+            match producer.send(&Record::from_value(&topic, to_send_bytes)) {
+                Ok(_) => info!("Wrote to Kafka about Proposal Update"),
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            }
             Ok(())
         }
         AdminServiceEvent::ProposalAccepted((msg_proposal, signer_public_key)) => {
@@ -156,7 +207,7 @@ fn process_admin_event(
                 .iter()
                 .find(|vote| vote.public_key == signer_public_key)
                 .ok_or_else(|| {
-                    AppAuthHandlerError::InvalidMessageError("Missing vote from signer".to_string())
+                    EventHandlerError::InvalidMessageError("Missing vote from signer".to_string())
                 })?;
 
             let proposal_id: i64 = 1234;
@@ -167,7 +218,25 @@ fn process_admin_event(
                 vote: "Accept".to_string(),
                 created_time: time,
             };
-            // TODO: Proposal is accepted
+            let mut proposal_accept = ProposalAccept::new();
+            proposal_accept.set_voter(vote.voter_public_key.clone());
+            proposal_accept.set_voter_node_id(vote.voter_node_id.clone());
+            proposal_accept.set_circuit_id(msg_proposal.circuit_id.clone());
+            let message_bytes = match proposal_accept.write_to_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            };
+            let mut message = Message::new();
+            message.set_field_type(Message_MessageType::PROPOSAL_ACCEPT);
+            message.set_message(message_bytes);
+            let to_send_bytes = match message.write_to_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            };
+            match producer.send(&Record::from_value(&topic, to_send_bytes)) {
+                Ok(_) => info!("Wrote to Kafka about Proposal Update"),
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            }
             Ok(())
         }
         AdminServiceEvent::ProposalRejected((msg_proposal, signer_public_key)) => {
@@ -179,7 +248,7 @@ fn process_admin_event(
                 .iter()
                 .find(|vote| vote.public_key == signer_public_key)
                 .ok_or_else(|| {
-                    AppAuthHandlerError::InvalidMessageError("Missing vote from signer".to_string())
+                    EventHandlerError::InvalidMessageError("Missing vote from signer".to_string())
                 })?;
 
             let vote = NewProposalVoteRecord {
@@ -189,7 +258,25 @@ fn process_admin_event(
                 vote: "Reject".to_string(),
                 created_time: time,
             };
-            // TODO: Proposal is rejected
+            let mut proposal_reject = ProposalReject::new();
+            proposal_reject.set_voter(vote.voter_public_key.clone());
+            proposal_reject.set_voter_node_id(vote.voter_node_id.clone());
+            proposal_reject.set_circuit_id(msg_proposal.circuit_id.clone());
+            let message_bytes = match proposal_reject.write_to_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            };
+            let mut message = Message::new();
+            message.set_field_type(Message_MessageType::PROPOSAL_REJECT);
+            message.set_message(message_bytes);
+            let to_send_bytes = match message.write_to_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            };
+            match producer.send(&Record::from_value(&topic, to_send_bytes)) {
+                Ok(_) => info!("Wrote to Kafka about Proposal Update"),
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            }
             Ok(())
         }
         AdminServiceEvent::CircuitReady(msg_proposal) => {
@@ -216,7 +303,7 @@ fn process_admin_event(
             ) {
                 Ok(metadata) => metadata.scabbard_admin_keys().to_vec(),
                 Err(err) => {
-                    return Err(AppAuthHandlerError::InvalidMessageError(format!(
+                    return Err(EventHandlerError::InvalidMessageError(format!(
                         "unable to parse application metadata: {}",
                         err
                     )))
@@ -225,8 +312,26 @@ fn process_admin_event(
 
             let time = SystemTime::now();
             let requester = to_hex(&msg_proposal.requester);
-            let proposal = parse_proposal(&msg_proposal, time, requester);
-            // TODO: Notify that the circuit is ready
+            let proposal = parse_proposal(&msg_proposal, time, requester.clone());
+            let mut proposal_ready = ProposalReady::new();
+            proposal_ready.set_requester(requester);
+            proposal_ready.set_requester_node_id(proposal.requester_node_id.clone());
+            proposal_ready.set_circuit_id(proposal.circuit_id.clone());
+            let message_bytes = match proposal_ready.write_to_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            };
+            let mut message = Message::new();
+            message.set_field_type(Message_MessageType::PROPOSAL_READY);
+            message.set_message(message_bytes);
+            let to_send_bytes = match message.write_to_bytes() {
+                Ok(bytes) => bytes,
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            };
+            match producer.send(&Record::from_value(&topic, to_send_bytes)) {
+                Ok(_) => info!("Wrote to Kafka about Proposal Update"),
+                Err(err) => return Err(EventHandlerError::InvalidMessageError(err.to_string())),
+            }
 
             let processor = SabreProcessor::new(
                 &msg_proposal.circuit_id,
@@ -299,7 +404,7 @@ fn process_admin_event(
                 }
             });
 
-            igniter.start_ws(&xo_ws).map_err(AppAuthHandlerError::from)
+            igniter.start_ws(&xo_ws).map_err(EventHandlerError::from)
         }
     }
 }
@@ -324,7 +429,7 @@ fn parse_proposal(
 fn parse_consortium(
     circuit: &CreateCircuit,
     timestamp: SystemTime,
-) -> Result<Consortium, AppAuthHandlerError> {
+) -> Result<Consortium, EventHandlerError> {
     let application_metadata = ApplicationMetadata::from_bytes(&circuit.application_metadata)?;
 
     Ok(Consortium {
